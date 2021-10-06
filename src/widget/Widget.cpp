@@ -2,7 +2,7 @@
 
 #include <widget/Widget.hpp>
 #include <context.hpp>
-
+#include <settings.hpp>
 
 namespace rack {
 namespace widget {
@@ -64,7 +64,6 @@ widget::Widget *Widget::getParent() {
 bool Widget::isVisible() {
 	return visible;
 }
-
 
 void Widget::setVisible(bool visible) {
 	if (visible == this->visible)
@@ -275,6 +274,8 @@ void Widget::draw(const DrawArgs& args) {
 			continue;
 		// Don't draw if child is outside clip box
 		if (!args.clipBox.intersects(child->box))
+			continue;
+		if (!(settings::skeuomorphic) && child->skeuomorphic)
 			continue;
 
 		drawChild(child, args);

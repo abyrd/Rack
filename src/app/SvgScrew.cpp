@@ -11,6 +11,7 @@ SvgScrew::SvgScrew() {
 
 	sw = new widget::SvgWidget;
 	fb->addChild(sw);
+	skeuomorphic = true;
 }
 
 

@@ -39,6 +39,7 @@ int threadCount = 1;
 bool tooltips = true;
 bool cpuMeter = false;
 bool lockModules = false;
+bool skeuomorphic = true;
 #if defined ARCH_MAC
 	// Most Mac GPUs can't handle rendering the screen every frame, so use ~30 Hz by default.
 	int frameSwapInterval = 2;
@@ -142,6 +143,8 @@ json_t* toJson() {
 	json_object_set_new(rootJ, "cpuMeter", json_boolean(cpuMeter));
 
 	json_object_set_new(rootJ, "lockModules", json_boolean(lockModules));
+
+	json_object_set_new(rootJ, "skeuomorphic", json_boolean(skeuomorphic));
 
 	json_object_set_new(rootJ, "frameSwapInterval", json_integer(frameSwapInterval));
 
@@ -316,6 +319,10 @@ void fromJson(json_t* rootJ) {
 	json_t* lockModulesJ = json_object_get(rootJ, "lockModules");
 	if (lockModulesJ)
 		lockModules = json_boolean_value(lockModulesJ);
+
+	json_t* skeuomorphicJ = json_object_get(rootJ, "skeuomorphic");
+	if (skeuomorphicJ)
+		skeuomorphic = json_boolean_value(skeuomorphicJ);
 
 	json_t* frameSwapIntervalJ = json_object_get(rootJ, "frameSwapInterval");
 	if (frameSwapIntervalJ)

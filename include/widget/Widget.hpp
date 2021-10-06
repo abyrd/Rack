@@ -32,6 +32,10 @@ struct Widget : WeakBase {
 	Use requestDelete() instead of using this variable directly.
 	*/
 	bool requestedDelete = false;
+	/** If true, this widget and all children will be skipped in the draw traversal when skeuomorphism is disabled.
+	 Note that any custom widgets in plugins including Fundamental will need to be rebuilt to work properly.
+	 For this reason it may be preferable to handle hiding with conditionals in individual widget draw methods. */
+	bool skeuomorphic = false;
 
 	virtual ~Widget();
 

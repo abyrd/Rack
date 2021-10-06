@@ -8,6 +8,7 @@ namespace app {
 CircularShadow::CircularShadow() {
 	blurRadius = 0;
 	opacity = 0.15;
+	skeuomorphic = true;
 }
 
 void CircularShadow::draw(const DrawArgs& args) {

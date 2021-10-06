@@ -1,6 +1,6 @@
 #include <thread>
 #include <utility>
-
+#include <cfloat>
 #include <osdialog.h>
 
 #include <app/MenuBar.hpp>
@@ -24,7 +24,6 @@
 #include <plugin.hpp>
 #include <patch.hpp>
 #include <library.hpp>
-
 
 namespace rack {
 namespace app {
@@ -467,6 +466,14 @@ struct ViewButton : MenuButton {
 		menu->addChild(knobScrollSensitivitySlider);
 
 		menu->addChild(createBoolPtrMenuItem("Lock module positions", "", &settings::lockModules));
+		menu->addChild(createCheckMenuItem("Skeuomorphic",
+		   [=]() {return settings::skeuomorphic;},
+		   [=]() {
+				settings::skeuomorphic = !settings::skeuomorphic;
+				// Trigger complete redraw to refresh knob shadow framebuffers
+				APP->event->handleDirty();
+			}
+		));
 	}
 };
 

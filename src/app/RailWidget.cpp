@@ -28,6 +28,8 @@ RailWidget::RailWidget() {
 	internal->railSw = new widget::SvgWidget;
 	internal->railSw->setSvg(window::Svg::load(asset::system("res/ComponentLibrary/Rail.svg")));
 	internal->railFb->addChild(internal->railSw);
+
+	skeuomorphic = true;
 }
 
 
