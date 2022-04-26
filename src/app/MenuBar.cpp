@@ -466,7 +466,7 @@ struct ViewButton : MenuButton {
 		menu->addChild(knobScrollSensitivitySlider);
 
 		menu->addChild(createBoolPtrMenuItem("Lock module positions", "", &settings::lockModules));
-		menu->addChild(createCheckMenuItem("Skeuomorphic",
+		menu->addChild(createCheckMenuItem("Skeuomorphic", "",
 		   [=]() {return settings::skeuomorphic;},
 		   [=]() {
 				settings::skeuomorphic = !settings::skeuomorphic;
