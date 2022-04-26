@@ -1,5 +1,5 @@
 #include <app/CircularShadow.hpp>
-
+#include <settings.hpp>
 
 namespace rack {
 namespace app {
@@ -8,10 +8,12 @@ namespace app {
 CircularShadow::CircularShadow() {
 	blurRadius = 0;
 	opacity = 0.15;
-	skeuomorphic = true;
 }
 
 void CircularShadow::draw(const DrawArgs& args) {
+	if (!settings::skeuomorphic)
+		return;
+
 	if (opacity <= 0.0)
 		return;
 

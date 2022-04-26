@@ -61,6 +61,9 @@ void LightWidget::drawLight(const DrawArgs& args) {
 
 
 void LightWidget::drawHalo(const DrawArgs& args) {
+	if (!settings::skeuomorphic)
+		return;
+
 	// Don't draw halo if rendering in a framebuffer, e.g. screenshots or Module Browser
 	if (args.fb)
 		return;

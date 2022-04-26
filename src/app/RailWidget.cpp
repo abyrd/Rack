@@ -3,6 +3,7 @@
 #include <asset.hpp>
 #include <widget/SvgWidget.hpp>
 #include <widget/FramebufferWidget.hpp>
+#include <settings.hpp>
 
 
 namespace rack {
@@ -28,8 +29,6 @@ RailWidget::RailWidget() {
 	internal->railSw = new widget::SvgWidget;
 	internal->railSw->setSvg(window::Svg::load(asset::system("res/ComponentLibrary/Rail.svg")));
 	internal->railFb->addChild(internal->railSw);
-
-	skeuomorphic = true;
 }
 
 
@@ -39,6 +38,9 @@ RailWidget::~RailWidget() {
 
 
 void RailWidget::draw(const DrawArgs& args) {
+	if (!settings::skeuomorphic)
+		return;
+
 	if (!internal->railSw->svg)
 		return;
 

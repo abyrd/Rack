@@ -272,10 +272,8 @@ void Widget::draw(const DrawArgs& args) {
 		// Don't draw if invisible
 		if (!child->isVisible())
 			continue;
-		// Don't draw if child is outside clip box
+		// Don't draw if child is outside clip box (most expensive check last)
 		if (!args.clipBox.intersects(child->box))
-			continue;
-		if (!(settings::skeuomorphic) && child->skeuomorphic)
 			continue;
 
 		drawChild(child, args);

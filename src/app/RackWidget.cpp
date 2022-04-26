@@ -139,7 +139,11 @@ void RackWidget::draw(const DrawArgs& args) {
 		// Draw mouse spotlight
 		nvgBeginPath(args.vg);
 		nvgRect(args.vg, 0.0, 0.0, VEC_ARGS(box.size));
-		nvgFillPaint(args.vg, nvgRadialGradient(args.vg, VEC_ARGS(internal->mousePos), 0.0, radius, nvgRGBAf(0, 0, 0, 1.f - b - brightness), nvgRGBAf(0, 0, 0, 1.f - b)));
+		if (settings::skeuomorphic) {
+			nvgFillPaint(args.vg, nvgRadialGradient(args.vg, VEC_ARGS(internal->mousePos), 0.0, radius, nvgRGBAf(0, 0, 0, 1.f - b - brightness), nvgRGBAf(0, 0, 0, 1.f - b)));
+		} else {
+			nvgFillColor(args.vg, nvgRGBAf(0, 0, 0, 1.f - b));
+		}
 		nvgFill(args.vg);
 	}
 
