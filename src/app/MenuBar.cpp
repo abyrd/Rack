@@ -398,6 +398,44 @@ struct ViewButton : MenuButton {
 		menu->cornerFlags = BND_CORNER_TOP;
 		menu->box.pos = getAbsoluteOffset(math::Vec(0, box.size.y));
 
+		menu->addChild(createMenuLabel("Window"));
+
+		bool fullscreen = APP->window->isFullScreen();
+		std::string fullscreenText = "F11";
+		if (fullscreen)
+			fullscreenText += " " CHECKMARK_STRING;
+		menu->addChild(createMenuItem("Fullscreen", fullscreenText, [=]() {
+			APP->window->setFullScreen(!fullscreen);
+		}));
+
+		menu->addChild(createSubmenuItem("Frame rate", string::f("%.0f Hz", settings::frameRateLimit), [=](ui::Menu* menu) {
+			for (int i = 1; i <= 6; i++) {
+				double frameRate = APP->window->getMonitorRefreshRate() / i;
+				menu->addChild(createCheckMenuItem(string::f("%.0f Hz", frameRate), "",
+					[=]() {return settings::frameRateLimit == frameRate;},
+					[=]() {settings::frameRateLimit = frameRate;}
+				));
+			}
+		}));
+
+		menu->addChild(new ui::MenuSeparator);
+		menu->addChild(createMenuLabel("Appearance"));
+
+		static const std::vector<std::string> uiThemes = {"dark", "light", "hcdark"};
+		static const std::vector<std::string> uiThemeLabels = {"Dark", "Light", "High contrast dark"};
+		menu->addChild(createIndexSubmenuItem("Theme", uiThemeLabels,
+			[=]() -> size_t {
+				auto it = std::find(uiThemes.begin(), uiThemes.end(), settings::uiTheme);
+				if (it == uiThemes.end())
+					return -1;
+				return it - uiThemes.begin();
+			},
+			[=](size_t i) {
+				settings::uiTheme = uiThemes[i];
+				ui::refreshTheme();
+			}
+		));
+
 		menu->addChild(createBoolPtrMenuItem("Show tooltips", "", &settings::tooltips));
 
 		ZoomSlider* zoomSlider = new ZoomSlider;
@@ -420,28 +458,10 @@ struct ViewButton : MenuButton {
 		haloBrightnessSlider->box.size.x = 250.0;
 		menu->addChild(haloBrightnessSlider);
 
-		double frameRate = APP->window->getMonitorRefreshRate() / settings::frameSwapInterval;
-		menu->addChild(createSubmenuItem("Frame rate", string::f("%.0f Hz", frameRate), [=](ui::Menu* menu) {
-			for (int i = 1; i <= 6; i++) {
-				double frameRate = APP->window->getMonitorRefreshRate() / i;
-				menu->addChild(createCheckMenuItem(string::f("%.0f Hz", frameRate), "",
-					[=]() {return settings::frameSwapInterval == i;},
-					[=]() {settings::frameSwapInterval = i;}
-				));
-			}
-		}));
-
-		bool fullscreen = APP->window->isFullScreen();
-		std::string fullscreenText = "F11";
-		if (fullscreen)
-			fullscreenText += " " CHECKMARK_STRING;
-		menu->addChild(createMenuItem("Fullscreen", fullscreenText, [=]() {
-			APP->window->setFullScreen(!fullscreen);
-		}));
-
 		menu->addChild(new ui::MenuSeparator);
+		menu->addChild(createMenuLabel("Parameters"));
 
-		menu->addChild(createBoolPtrMenuItem("Lock cursor while dragging params", "", &settings::allowCursorLock));
+		menu->addChild(createBoolPtrMenuItem("Lock cursor while dragging", "", &settings::allowCursorLock));
 
 		static const std::vector<std::string> knobModeLabels = {
 			"Linear",
@@ -465,7 +485,6 @@ struct ViewButton : MenuButton {
 		knobScrollSensitivitySlider->box.size.x = 250.0;
 		menu->addChild(knobScrollSensitivitySlider);
 
-		menu->addChild(createBoolPtrMenuItem("Lock module positions", "", &settings::lockModules));
 		menu->addChild(createCheckMenuItem("Skeuomorphic", "",
 		   [=]() {return settings::skeuomorphic;},
 		   [=]() {
@@ -474,6 +493,13 @@ struct ViewButton : MenuButton {
 				APP->event->handleDirty();
 			}
 		));
+
+		menu->addChild(new ui::MenuSeparator);
+		menu->addChild(createMenuLabel("Module"));
+
+		menu->addChild(createBoolPtrMenuItem("Lock positions", "", &settings::lockModules));
+
+		menu->addChild(createBoolPtrMenuItem("Auto-squeeze algorithm (experimental)", "", &settings::squeezeModules));
 	}
 };
 
@@ -839,8 +865,6 @@ struct HelpButton : MenuButton {
 
 		menu->addChild(new ui::MenuSeparator);
 
-		menu->addChild(createMenuLabel(APP_NAME + " " + APP_EDITION_NAME + " " + APP_VERSION));
-
 		menu->addChild(createMenuItem("Open user folder", "", [=]() {
 			system::openDirectory(asset::user(""));
 		}));
@@ -877,23 +901,25 @@ struct HelpButton : MenuButton {
 ////////////////////
 
 
-struct MeterLabel : ui::Label {
-	int frameIndex = 0;
+struct InfoLabel : ui::Label {
+	int frameCount = 0;
 	double frameDurationTotal = 0.0;
-	double frameDurationAvg = 0.0;
-	double uiLastTime = 0.0;
-	double uiLastThreadTime = 0.0;
-	double uiFrac = 0.0;
+	double frameDurationAvg = NAN;
+	// double uiLastTime = 0.0;
+	// double uiLastThreadTime = 0.0;
+	// double uiFrac = 0.0;
 
 	void step() override {
 		// Compute frame rate
 		double frameDuration = APP->window->getLastFrameDuration();
-		frameDurationTotal += frameDuration;
-		frameIndex++;
+		if (std::isfinite(frameDuration)) {
+			frameDurationTotal += frameDuration;
+			frameCount++;
+		}
 		if (frameDurationTotal >= 1.0) {
-			frameDurationAvg = frameDurationTotal / frameIndex;
+			frameDurationAvg = frameDurationTotal / frameCount;
 			frameDurationTotal = 0.0;
-			frameIndex = 0;
+			frameCount = 0;
 		}
 
 		// Compute UI thread CPU
@@ -906,16 +932,25 @@ struct MeterLabel : ui::Label {
 		// 	uiLastTime = time;
 		// }
 
-		double meterAverage = APP->engine->getMeterAverage();
-		double meterMax = APP->engine->getMeterMax();
-		text = string::f("%.1f fps  %.1f%% avg  %.1f%% max", 1.0 / frameDurationAvg, meterAverage * 100, meterMax * 100);
+		text = "";
+
+		if (box.size.x >= 460) {
+			double fps = std::isfinite(frameDurationAvg) ? 1.0 / frameDurationAvg : 0.0;
+			double meterAverage = APP->engine->getMeterAverage();
+			double meterMax = APP->engine->getMeterMax();
+			text += string::f("%.1f fps  %.1f%% avg  %.1f%% max", fps, meterAverage * 100, meterMax * 100);
+			text += "     ";
+		}
+
+		text += APP_NAME + " " + APP_EDITION_NAME + " " + APP_VERSION + " " + APP_OS_NAME + " " + APP_CPU_NAME;
+
 		Label::step();
 	}
 };
 
 
 struct MenuBar : widget::OpaqueWidget {
-	MeterLabel* meterLabel;
+	InfoLabel* infoLabel;
 
 	MenuBar() {
 		const float margin = 5;
@@ -950,16 +985,10 @@ struct MenuBar : widget::OpaqueWidget {
 		helpButton->text = "Help";
 		layout->addChild(helpButton);
 
-		// ui::Label* titleLabel = new ui::Label;
-		// titleLabel->color.a = 0.5;
-		// layout->addChild(titleLabel);
-
-		meterLabel = new MeterLabel;
-		meterLabel->box.pos.y = margin;
-		meterLabel->box.size.x = 300;
-		meterLabel->alignment = ui::Label::RIGHT_ALIGNMENT;
-		meterLabel->color.a = 0.5;
-		addChild(meterLabel);
+		infoLabel = new InfoLabel;
+		infoLabel->box.size.x = 600;
+		infoLabel->alignment = ui::Label::RIGHT_ALIGNMENT;
+		layout->addChild(infoLabel);
 	}
 
 	void draw(const DrawArgs& args) override {
@@ -970,8 +999,10 @@ struct MenuBar : widget::OpaqueWidget {
 	}
 
 	void step() override {
-		meterLabel->box.pos.x = box.size.x - meterLabel->box.size.x - 5;
 		Widget::step();
+		infoLabel->box.size.x = box.size.x - infoLabel->box.pos.x - 5;
+		// Setting 50% alpha prevents Label from using the default UI theme color, so set the color manually here.
+		infoLabel->color = color::alpha(bndGetTheme()->regularTheme.textColor, 0.5);
 	}
 };
 

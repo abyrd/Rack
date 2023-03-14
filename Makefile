@@ -1,7 +1,6 @@
 RACK_DIR ?= .
 VERSION_MAJOR := 2
-# VERSION := 2.git.$(shell git rev-parse --short HEAD)
-VERSION := 2.1.0
+VERSION := 2.3.0
 
 FLAGS += -Iinclude -Idep/include
 
@@ -13,12 +12,12 @@ SOURCES += dep/nanovg/src/nanovg.c
 SOURCES += dep/osdialog/osdialog.c
 SOURCES += dep/oui-blendish/blendish.c
 SOURCES += dep/pffft/pffft.c dep/pffft/fftpack.c
+SOURCES += dep/tinyexpr/tinyexpr.c
 SOURCES += $(wildcard src/*.c src/*/*.c)
 SOURCES += $(wildcard src/*.cpp src/*/*.cpp)
 
 build/src/common.cpp.o: FLAGS += -D_APP_VERSION=$(VERSION)
-
-STANDALONE_SOURCES += adapters/standalone.cpp
+build/dep/tinyexpr/tinyexpr.c.o: FLAGS += -DTE_POW_FROM_RIGHT -DTE_NAT_LOG
 
 FLAGS += -fPIC
 LDFLAGS += -shared
@@ -38,10 +37,6 @@ ifdef ARCH_LIN
 	LDFLAGS += dep/lib/libGLEW.a dep/lib/libglfw3.a dep/lib/libjansson.a dep/lib/libcurl.a dep/lib/libssl.a dep/lib/libcrypto.a dep/lib/libarchive.a dep/lib/libzstd.a dep/lib/libspeexdsp.a dep/lib/libsamplerate.a dep/lib/librtmidi.a dep/lib/librtaudio.a
 	LDFLAGS += -Wl,--no-whole-archive
 	LDFLAGS += -lpthread -lGL -ldl -lX11 -lasound -ljack -lpulse -lpulse-simple
-
-	STANDALONE_TARGET := Rack
-	STANDALONE_LDFLAGS += -static-libstdc++ -static-libgcc
-	STANDALONE_LDFLAGS += -Wl,-rpath=.
 endif
 
 ifdef ARCH_MAC
@@ -52,12 +47,7 @@ ifdef ARCH_MAC
 	LDFLAGS += -lpthread -ldl
 	LDFLAGS += -framework SystemConfiguration -framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo -framework CoreAudio -framework CoreMIDI
 	LDFLAGS += -Wl,-all_load
-	LDFLAGS += dep/lib/libGLEW.a dep/lib/libglfw3.a dep/lib/libjansson.a dep/lib/libcurl.a dep/lib/libssl.a dep/lib/libcrypto.a dep/lib/libarchive.a dep/lib/libzstd.a dep/lib/libspeexdsp.a dep/lib/libsamplerate.a dep/lib/librtmidi.a dep/lib/librtaudio.a
-
-	STANDALONE_TARGET := Rack
-	STANDALONE_LDFLAGS += -stdlib=libc++
-	# For LuaJIT to work inside plugins
-	STANDALONE_LDFLAGS += -Wl,-pagezero_size,10000 -Wl,-image_base,100000000
+	LDFLAGS += dep/lib/libGLEW.a dep/lib/libglfw3.a dep/lib/libjansson.a dep/lib/libcurl.a dep/lib/libssl.a dep/lib/libcrypto.a -Wl,-load_hidden,dep/lib/libarchive.a -Wl,-load_hidden,dep/lib/libzstd.a dep/lib/libspeexdsp.a dep/lib/libsamplerate.a -Wl,-load_hidden,dep/lib/librtmidi.a -Wl,-load_hidden,dep/lib/librtaudio.a
 endif
 
 ifdef ARCH_WIN
@@ -72,7 +62,33 @@ ifdef ARCH_WIN
 	LDFLAGS += dep/lib/libglew32.a dep/lib/libglfw3.a dep/lib/libjansson.a dep/lib/libspeexdsp.a dep/lib/libsamplerate.a dep/lib/libarchive_static.a dep/lib/libzstd.a dep/lib/libcurl.a dep/lib/libssl.a dep/lib/libcrypto.a dep/lib/librtaudio.a dep/lib/librtmidi.a
 	LDFLAGS += -Wl,-Bdynamic -Wl,--no-whole-archive
 	LDFLAGS += -lpthread -lopengl32 -lgdi32 -lws2_32 -lcomdlg32 -lole32 -ldsound -lwinmm -lksuser -lshlwapi -lmfplat -lmfuuid -lwmcodecdspuuid -ldbghelp -lcrypt32
+endif
 
+# Some libraries aren't needed by plugins and might conflict with DAWs that load libRack, so make their symbols local to libRack instead of global (default).
+# --exclude-libs is unavailable on Apple ld
+ifndef ARCH_MAC
+	LDFLAGS += -Wl,--exclude-libs,libzstd.a
+	LDFLAGS += -Wl,--exclude-libs,libarchive.a
+	LDFLAGS += -Wl,--exclude-libs,librtmidi.a
+	LDFLAGS += -Wl,--exclude-libs,librtaudio.a
+endif
+
+include compile.mk
+
+# Standalone adapter
+
+STANDALONE_SOURCES += adapters/standalone.cpp
+
+ifdef ARCH_LIN
+	STANDALONE_TARGET := Rack
+	STANDALONE_LDFLAGS += -static-libstdc++ -static-libgcc
+	STANDALONE_LDFLAGS += -Wl,-rpath=.
+endif
+ifdef ARCH_MAC
+	STANDALONE_TARGET := Rack
+	STANDALONE_LDFLAGS += -stdlib=libc++
+endif
+ifdef ARCH_WIN
 	STANDALONE_TARGET := Rack.exe
 	STANDALONE_LDFLAGS += -mwindows
 	# 1MiB stack size to match MSVC
@@ -80,15 +96,7 @@ ifdef ARCH_WIN
 	STANDALONE_OBJECTS += build/Rack.res
 endif
 
-include compile.mk
-
-# Standalone adapter
-
-ifdef ARCH_MAC
-	STANDALONE_LDFLAGS += $(MAC_SDK_FLAGS)
-endif
 STANDALONE_OBJECTS += $(TARGET)
--include $(STANDALONE_DEPENDENCIES)
 
 $(STANDALONE_TARGET): $(STANDALONE_SOURCES) $(STANDALONE_OBJECTS)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(STANDALONE_LDFLAGS)
@@ -120,9 +128,6 @@ ifdef ARCH_LIN
 	gdb --args ./$< -d
 endif
 
-screenshot: $(STANDALONE_TARGET)
-	./$< -d -t 2
-
 perf: $(STANDALONE_TARGET)
 	# Requires perf
 	perf record --call-graph dwarf -o perf.data ./$< -d
@@ -136,7 +141,7 @@ valgrind: $(STANDALONE_TARGET)
 	valgrind --suppressions=valgrind.supp ./$< -d
 
 clean:
-	rm -rfv build dist *.a Rack.res *.d $(TARGET) $(STANDALONE_TARGET)
+	rm -rfv build dist $(TARGET) $(STANDALONE_TARGET) *.a
 
 
 # For Windows resources
@@ -146,9 +151,9 @@ ifdef ARCH_WIN
 endif
 
 DIST_RES := res cacert.pem Core.json template.vcv LICENSE-GPLv3.txt
-DIST_NAME := RackFree-"$(VERSION)"-$(ARCH_OS_NAME)
+DIST_NAME := RackFree-$(VERSION)-$(ARCH_NAME)
 DIST_SDK_DIR := Rack-SDK
-DIST_SDK := Rack-SDK-"$(VERSION)"-$(ARCH_OS_NAME).zip
+DIST_SDK := Rack-SDK-$(VERSION)-$(ARCH_NAME).zip
 ifdef ARCH_MAC
 	DIST_BUNDLE := VCV Rack $(VERSION_MAJOR) Free.app
 else
@@ -159,8 +164,7 @@ DIST_HTML := $(patsubst %.md, build/%.html, $(DIST_MD))
 
 
 # Target not supported for public use
-dist: $(TARGET) $(STANDALONE_TARGET) $(DIST_HTML)
-	rm -rf dist
+dist: $(TARGET) $(STANDALONE_TARGET) $(DIST_HTML) | cleandist
 	mkdir -p dist
 	# Copy Rack to dist
 ifdef ARCH_LIN
@@ -247,6 +251,18 @@ ifdef ARCH_WIN
 	cp libRack.dll.a dist/"$(DIST_SDK_DIR)"/
 endif
 	cd dist && zip -q -9 -r "$(DIST_SDK)" "$(DIST_SDK_DIR)"
+
+
+install: dist
+ifdef ARCH_MAC
+	sudo installer -pkg dist/"$(DIST_NAME)".pkg -target /
+endif
+
+
+uninstall:
+ifdef ARCH_MAC
+	sudo rm -rf /Applications/"$(DIST_BUNDLE)"
+endif
 
 
 # Target not supported for public use

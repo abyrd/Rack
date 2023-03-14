@@ -2,6 +2,90 @@
 
 In this document, Ctrl means Cmd on Mac.
 
+### 2.3.0 (2023-03-08)
+- Add "View > Themes" menu with new UI themes: light and high-contrast dark.
+- Fix file permissions resulting in error when loading certain patches.
+- Don't select modules on click when module positions are locked.
+- Fix small memory leak when pasting modules or selections.
+- Fix incorrect panel scale when moving window between screens with different scale.
+- Rack Pro
+	- Don't force MIDI output message channel to 1 in VST3 adapter. Offer all 16 channels.
+	- Fix aftertouch and polyphonic pressure on all MIDI channels in VST3 and CLAP adapters.
+- API
+	- Make `ParamQuantity::set/getValue()` set/get the Param's target value of the Engine's per-sample smoothing algorithm instead of the Param's immediate value. Add `ParamQuantity::set/getImmediateValue()`. Deprecate `ParamQuantity::set/getSmoothValue()`.
+	- Add `dsp::polyDirect()`, `dsp::polyHorner()`, and `dsp::polyEstrin()`.
+	- Rename `dsp::approxExp2_taylor5()` to `dsp::exp2_taylor5()` and improve polynomial coefficients.
+	- Add `color::lerp()`.
+	- Add `BooleanTrigger::processEvent()` and `SchmittTrigger::processEvent()`.
+	- Add `get()` helper function for `std::vector`.
+
+### 2.2.3 (2023-01-25)
+- Place module selection nearest to mouse position when pasted and nearest to the center of the rack viewport when imported.
+- Allow custom menu items to be appended to port's context menu.
+- Fix ignored MIDI input messages while using small audio block sizes.
+- Rack Pro
+	- Fix hang when dialog box opens on Windows, such as after syncing library plugins.
+	- Enable Loopback MIDI driver in all plugin adapters.
+	- Fix MIDI CC output of VST3 adapter.
+	- Fix Windows installer not overwriting existing VST3 plugin bundle on Windows.
+	- Store and recall window size of VST3.
+	- Fix MIDI clock input in CLAP adapter.
+	- Make CLAP adapter a Note Effect and Audio Effect as well as an Instrument.
+- API
+	- Make unarchiver handle zero-byte files as a special case by deleting destination files instead of overwriting them. This allows plugin packages to remove old presets by including a zero-byte file with its filename.
+	- Add `ModuleWidget::getModule<TModule>()` convenience method.
+
+### 2.2.2 (2022-12-27)
+- Display Rack edition, version, OS, CPU, and plugin type in menu bar to help with troubleshooting.
+- Add long-form command line options.
+- Zero audio output of all channels in `audio::Device::processBuffer()` before writing, to avoid sending uninitialized values to audio device.
+- Rack Pro
+	- Fix blank plugin window on certain Linux Nvidia graphics drivers.
+- API
+	- Don't include SIMDE headers on x64, fixing symbol conflicts when plugins include x64 intrinsic headers.
+	- Don't export symbols from libarchive, zstd, rtaudio, and rtmidi to avoid conflicts with hosts that use these libraries. Rack plugins can no longer link to these libraries.
+	- Rename plugin binary to `plugin-arm64.dylib` on Mac ARM64 so multiple plugin architectures can coexist in the same Rack user folder.
+
+### 2.2.1 (2022-12-07)
+- Add `CROSS_COMPILE` environment variable to specify target triplet for building plugins for non-native architectures.
+- Accept `aarch64` in target triplet as alias for ARM64.
+- Rack Pro
+	- Re-enable rtaudio and rtmidi in plugin adapters, so hardware audio/MIDI devices can be used directly by Rack.
+	- Fix VST3 not receiving MIDI CC input from DAWs.
+	- Fix VST3 not sending MIDI output to some DAWs.
+	- Fix VST3 in Bitwig resetting parameters when adding/removing modules.
+	- Fix VST3 adapter not loading on Bitwig Linux and possibly other hosts, by providing VST3 as a folder bundle instead of a single file.
+	- Fix CLAP adapter not loading on Windows, by statically linking libgcc.
+
+### 2.2.0 (2022-11-23)
+- Add MIDI Loopback driver, allowing modules with MIDI ports to send MIDI messages to other modules.
+- Improve fuzzy search in module browser.
+- Allow building on ARM64 CPUs.
+- Rename plugin packages to `SLUG-VERSION-OS-CPU.vcvplugin`.
+- Rack Pro
+	- Add VST3, Audio Unit, and CLAP plugin adapters.
+	- Add framerate setting to plugins.
+- API
+	- Add `system::sleep()`.
+	- Make `random::get()`, `uniform()`, etc use global random state instead of thread-local.
+
+### 2.1.2 (2022-07-04)
+- Add old module moving behavior (nearest and force-moving), available by disabling "View > Auto-squeeze algorithm".
+- Reorganized View menu.
+- Add version comparator so Rack only updates plugins or itself if the remote version is "greater" than the local version, as defined by the `string::Version` documentation.
+- Add file association to Mac, so double-clicking a `.vcv` patch file in Finder opens Rack and loads the patch.
+- Fix expanders not updating (connecting or disconnecting to adjacent modules) when cloning or removing modules.
+- Fix VCV Audio 2 VU meter light thresholds not matching label.
+
+### 2.1.1 (2022-05-21)
+- Allow changing cable colors with port menu.
+- Fix placement bugs and improve behavior when moving or duplicating modules.
+- Fix probabilistic crash when undoing a module paste action.
+- Rack Pro
+	- Fix VST2 window size not being remembered on Mac.
+- API
+	- Make `SvgButton` dispatch `ActionEvent` only on left mouse down, instead of left/right mouse down and drag drop.
+
 ### 2.1.0 (2022-02-26)
 - Change behavior of force-moving modules so that other modules return to original position while dragging.
 - Update to RtMidi 5.0.0.

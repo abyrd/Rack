@@ -8,6 +8,7 @@
 #include <context.hpp>
 #include <patch.hpp>
 #include <asset.hpp>
+#include <system.hpp>
 
 
 namespace rack {
@@ -19,12 +20,14 @@ bool devMode = false;
 bool headless = false;
 bool isPlugin = false;
 
+bool safeMode = false;
 std::string token;
 bool windowMaximized = false;
 math::Vec windowSize = math::Vec(1024, 720);
 math::Vec windowPos = math::Vec(NAN, NAN);
 bool invertZoom = false;
 float pixelRatio = 0.0;
+std::string uiTheme = "dark";
 float cableOpacity = 0.5;
 float cableTension = 1.0;
 float rackBrightness = 1.0;
@@ -40,11 +43,12 @@ bool tooltips = true;
 bool cpuMeter = false;
 bool lockModules = false;
 bool skeuomorphic = true;
+bool squeezeModules = true;
 #if defined ARCH_MAC
-	// Most Mac GPUs can't handle rendering the screen every frame, so use ~30 Hz by default.
-	int frameSwapInterval = 2;
+	// Most Mac GPUs can't handle rendering the screen every frame, so use 30 Hz by default.
+	float frameRateLimit = 30.f;
 #else
-	int frameSwapInterval = 1;
+	float frameRateLimit = 60.f;
 #endif
 float autosaveInterval = 15.0;
 bool skipLoadOnLaunch = false;
@@ -59,9 +63,9 @@ std::vector<NVGcolor> cableColors = {
 bool autoCheckUpdates = true;
 bool showTipsOnLaunch = true;
 int tipIndex = -1;
-bool discordUpdateActivity = true;
 BrowserSort browserSort = BROWSER_SORT_UPDATED;
 float browserZoom = -1.f;
+json_t* pluginSettingsJ = NULL;
 std::map<std::string, std::map<std::string, ModuleInfo>> moduleInfos;
 std::map<std::string, PluginWhitelist> moduleWhitelist;
 
@@ -99,8 +103,19 @@ void init() {
 }
 
 
+void destroy() {
+	if (pluginSettingsJ) {
+		json_decref(pluginSettingsJ);
+		pluginSettingsJ = NULL;
+	}
+}
+
+
 json_t* toJson() {
 	json_t* rootJ = json_object();
+
+	// Always disable safe mode when settings are saved.
+	json_object_set_new(rootJ, "safeMode", json_boolean(false));
 
 	json_object_set_new(rootJ, "token", json_string(token.c_str()));
 
@@ -115,6 +130,8 @@ json_t* toJson() {
 	json_object_set_new(rootJ, "invertZoom", json_boolean(invertZoom));
 
 	json_object_set_new(rootJ, "pixelRatio", json_real(pixelRatio));
+
+	json_object_set_new(rootJ, "uiTheme", json_string(uiTheme.c_str()));
 
 	json_object_set_new(rootJ, "cableOpacity", json_real(cableOpacity));
 
@@ -146,7 +163,9 @@ json_t* toJson() {
 
 	json_object_set_new(rootJ, "skeuomorphic", json_boolean(skeuomorphic));
 
-	json_object_set_new(rootJ, "frameSwapInterval", json_integer(frameSwapInterval));
+	json_object_set_new(rootJ, "squeezeModules", json_boolean(squeezeModules));
+
+	json_object_set_new(rootJ, "frameRateLimit", json_real(frameRateLimit));
 
 	json_object_set_new(rootJ, "autosaveInterval", json_real(autosaveInterval));
 
@@ -172,12 +191,16 @@ json_t* toJson() {
 
 	json_object_set_new(rootJ, "tipIndex", json_integer(tipIndex));
 
-	if (!discordUpdateActivity)
-		json_object_set_new(rootJ, "discordUpdateActivity", json_boolean(discordUpdateActivity));
-
 	json_object_set_new(rootJ, "browserSort", json_integer((int) browserSort));
 
 	json_object_set_new(rootJ, "browserZoom", json_real(browserZoom));
+
+	// Merge pluginSettings instead of replace so plugins that fail to load don't cause their settings to be deleted.
+	if (!pluginSettingsJ)
+		pluginSettingsJ = json_object();
+	plugin::settingsMergeJson(pluginSettingsJ);
+	// Don't use *_set_new() here because we need to keep the reference to pluginSettingsJ.
+	json_object_set(rootJ, "pluginSettings", pluginSettingsJ);
 
 	// moduleInfos
 	json_t* moduleInfosJ = json_object();
@@ -234,6 +257,13 @@ json_t* toJson() {
 }
 
 void fromJson(json_t* rootJ) {
+	json_t* safeModeJ = json_object_get(rootJ, "safeMode");
+	if (safeModeJ) {
+		// If safe mode is enabled (e.g. by command line flag), don't disable it when loading.
+		if (json_boolean_value(safeModeJ))
+			safeMode = true;
+	}
+
 	json_t* tokenJ = json_object_get(rootJ, "token");
 	if (tokenJ)
 		token = json_string_value(tokenJ);
@@ -263,6 +293,10 @@ void fromJson(json_t* rootJ) {
 	json_t* pixelRatioJ = json_object_get(rootJ, "pixelRatio");
 	if (pixelRatioJ)
 		pixelRatio = json_number_value(pixelRatioJ);
+
+	json_t* uiThemeJ = json_object_get(rootJ, "uiTheme");
+	if (uiThemeJ)
+		uiTheme = json_string_value(uiThemeJ);
 
 	json_t* cableOpacityJ = json_object_get(rootJ, "cableOpacity");
 	if (cableOpacityJ)
@@ -324,9 +358,24 @@ void fromJson(json_t* rootJ) {
 	if (skeuomorphicJ)
 		skeuomorphic = json_boolean_value(skeuomorphicJ);
 
+	json_t* squeezeModulesJ = json_object_get(rootJ, "squeezeModules");
+	if (squeezeModulesJ)
+		squeezeModules = json_boolean_value(squeezeModulesJ);
+
+	// Legacy setting in Rack <2.2
 	json_t* frameSwapIntervalJ = json_object_get(rootJ, "frameSwapInterval");
-	if (frameSwapIntervalJ)
-		frameSwapInterval = json_integer_value(frameSwapIntervalJ);
+	if (frameSwapIntervalJ) {
+		// Assume 60 Hz monitor refresh rate.
+		int frameSwapInterval = json_integer_value(frameSwapIntervalJ);
+		if (frameSwapInterval > 0)
+			frameRateLimit = 60.f / frameSwapInterval;
+		else
+			frameRateLimit = 0.f;
+	}
+
+	json_t* frameRateLimitJ = json_object_get(rootJ, "frameRateLimit");
+	if (frameRateLimitJ)
+		frameRateLimit = json_number_value(frameRateLimitJ);
 
 	json_t* autosaveIntervalJ = json_object_get(rootJ, "autosaveInterval");
 	if (autosaveIntervalJ)
@@ -370,10 +419,6 @@ void fromJson(json_t* rootJ) {
 	if (tipIndexJ)
 		tipIndex = json_integer_value(tipIndexJ);
 
-	json_t* discordUpdateActivityJ = json_object_get(rootJ, "discordUpdateActivity");
-	if (discordUpdateActivityJ)
-		discordUpdateActivity = json_boolean_value(discordUpdateActivityJ);
-
 	json_t* browserSortJ = json_object_get(rootJ, "browserSort");
 	if (browserSortJ)
 		browserSort = (BrowserSort) json_integer_value(browserSortJ);
@@ -381,6 +426,15 @@ void fromJson(json_t* rootJ) {
 	json_t* browserZoomJ = json_object_get(rootJ, "browserZoom");
 	if (browserZoomJ)
 		browserZoom = json_number_value(browserZoomJ);
+
+	// Delete previous pluginSettings object
+	if (pluginSettingsJ) {
+		json_decref(pluginSettingsJ);
+		pluginSettingsJ = NULL;
+	}
+	pluginSettingsJ = json_object_get(rootJ, "pluginSettings");
+	if (pluginSettingsJ)
+		json_incref(pluginSettingsJ);
 
 	moduleInfos.clear();
 	json_t* moduleInfosJ = json_object_get(rootJ, "moduleInfos");
@@ -445,14 +499,17 @@ void save(std::string path) {
 	json_t* rootJ = toJson();
 	if (!rootJ)
 		return;
+	DEFER({json_decref(rootJ);});
 
-	FILE* file = std::fopen(path.c_str(), "w");
+	std::string tmpPath = path + ".tmp";
+	FILE* file = std::fopen(tmpPath.c_str(), "w");
 	if (!file)
 		return;
-	DEFER({std::fclose(file);});
 
 	json_dumpf(rootJ, file, JSON_INDENT(2));
-	json_decref(rootJ);
+	std::fclose(file);
+	system::remove(path);
+	system::rename(tmpPath, path);
 }
 
 void load(std::string path) {
@@ -469,9 +526,9 @@ void load(std::string path) {
 	json_t* rootJ = json_loadf(file, 0, &error);
 	if (!rootJ)
 		throw Exception("Settings file has invalid JSON at %d:%d %s", error.line, error.column, error.text);
+	DEFER({json_decref(rootJ);});
 
 	fromJson(rootJ);
-	json_decref(rootJ);
 }
 
 

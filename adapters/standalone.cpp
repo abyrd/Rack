@@ -7,6 +7,7 @@
 #include <rtmidi.hpp>
 #include <keyboard.hpp>
 #include <gamepad.hpp>
+#include <midiloopback.hpp>
 #include <settings.hpp>
 #include <engine/Engine.hpp>
 #include <app/common.hpp>
@@ -22,15 +23,14 @@
 #include <string.hpp>
 #include <library.hpp>
 #include <network.hpp>
-#include <discord.hpp>
 
-#include <osdialog.h>
-#include <thread>
+#include <getopt.h>
 #include <unistd.h> // for getopt
 #include <signal.h> // for signal
 #if defined ARCH_WIN
 	#include <windows.h> // for CreateMutex
 #endif
+#include <osdialog.h>
 
 #if defined ARCH_MAC
 	#define GLFW_EXPOSE_NATIVE_COCOA
@@ -71,12 +71,28 @@ int main(int argc, char* argv[]) {
 	std::string patchPath;
 	bool screenshot = false;
 	float screenshotZoom = 1.f;
+	const std::string appInfo = APP_NAME + " " + APP_EDITION_NAME + " " + APP_VERSION + " " + APP_OS_NAME + " " + APP_CPU_NAME;
 
 	// Parse command line arguments
+	static const struct option longOptions[] = {
+		{"safe", no_argument, NULL, 'a'},
+		{"dev", no_argument, NULL, 'd'},
+		{"headless", no_argument, NULL, 'h'},
+		{"screenshot", required_argument, NULL, 't'},
+		{"system", required_argument, NULL, 's'},
+		{"user", required_argument, NULL, 'u'},
+		{"version", no_argument, NULL, 'v'},
+		{"help", no_argument, NULL, 256},
+		{NULL, 0, NULL, 0}
+	};
 	int c;
 	opterr = 0;
-	while ((c = getopt(argc, argv, "dht:s:u:p:")) != -1) {
+
+	while ((c = getopt_long(argc, argv, "adht:s:u:vp:", longOptions, NULL)) != -1) {
 		switch (c) {
+			case 'a': {
+				settings::safeMode = true;
+			} break;
 			case 'd': {
 				settings::devMode = true;
 			} break;
@@ -93,6 +109,15 @@ int main(int argc, char* argv[]) {
 			case 'u': {
 				asset::userDir = optarg;
 			} break;
+			case 'v': {
+				std::fprintf(stderr, "%s\n", appInfo.c_str());
+				return 0;
+			}
+			case 256: { // --help
+				std::fprintf(stderr, "%s\n", appInfo.c_str());
+				std::fprintf(stderr, "https://vcvrack.com/manual/Installing#Command-line-usage\n");
+				return 0;
+			}
 			// Mac "app translocation" passes a nonsense -psn_... flag, so -p is reserved.
 			case 'p': break;
 			default: break;
@@ -124,7 +149,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	// Log environment
-	INFO("%s %s v%s", APP_NAME.c_str(), APP_EDITION_NAME.c_str(), APP_VERSION.c_str());
+	INFO("%s", appInfo.c_str());
 	INFO("%s", system::getOperatingSystemInfo().c_str());
 	std::string argsList;
 	for (int i = 0; i < argc; i++) {
@@ -172,13 +197,13 @@ int main(int argc, char* argv[]) {
 	rtmidiInit();
 	keyboard::init();
 	gamepad::init();
+	midiloopback::init();
 	INFO("Initializing plugins");
 	plugin::init();
 	INFO("Initializing browser");
 	app::browserInit();
 	INFO("Initializing library");
 	library::init();
-	discord::init();
 	if (!settings::headless) {
 		INFO("Initializing UI");
 		ui::init();
@@ -188,6 +213,8 @@ int main(int argc, char* argv[]) {
 
 	// Initialize context
 	contextSet(new Context);
+	INFO("Creating MIDI loopback");
+	APP->midiLoopbackContext = new midiloopback::Context;
 	INFO("Creating engine");
 	APP->engine = new engine::Engine;
 	INFO("Creating history state");
@@ -208,10 +235,10 @@ int main(int argc, char* argv[]) {
 #if defined ARCH_MAC
 	// For some reason, launching from the command line sets glfwGetOpenedFilenames(), so make sure we're running the app bundle.
 	if (asset::bundlePath != "") {
-		// const char* const* openedFilenames = glfwGetOpenedFilenames();
-		// if (openedFilenames && openedFilenames[0]) {
-		// 	patchPath = openedFilenames[0];
-		// }
+		const char* const* openedFilenames = glfwGetOpenedFilenames();
+		if (openedFilenames && openedFilenames[0]) {
+			patchPath = openedFilenames[0];
+		}
 	}
 #endif
 
@@ -262,7 +289,6 @@ int main(int argc, char* argv[]) {
 		INFO("Destroying UI");
 		ui::destroy();
 	}
-	discord::destroy();
 	INFO("Destroying library");
 	library::destroy();
 	INFO("Destroying MIDI");
@@ -273,6 +299,7 @@ int main(int argc, char* argv[]) {
 	plugin::destroy();
 	INFO("Destroying network");
 	network::destroy();
+	settings::destroy();
 	INFO("Destroying logger");
 	logger::destroy();
 

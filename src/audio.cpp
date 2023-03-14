@@ -31,8 +31,8 @@ void Device::unsubscribe(Port* port) {
 }
 
 void Device::processBuffer(const float* input, int inputStride, float* output, int outputStride, int frames) {
-	// Zero output in case no Port writes values to it.
-	std::memset(output, 0, frames * outputStride * sizeof(float));
+	// Zero output since Ports might not write to all elements, or no Ports exist
+	std::fill_n(output, frames * outputStride, 0.f);
 
 	std::lock_guard<std::mutex> lock(processMutex);
 	for (Port* port : subscribed) {

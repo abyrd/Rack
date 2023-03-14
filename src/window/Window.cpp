@@ -27,7 +27,7 @@ namespace rack {
 namespace window {
 
 
-static const math::Vec WINDOW_SIZE_MIN = math::Vec(480, 320);
+static const math::Vec WINDOW_SIZE_MIN = math::Vec(640, 480);
 
 
 Font::~Font() {
@@ -89,10 +89,9 @@ struct Window::Internal {
 
 	int frame = 0;
 	bool ignoreNextMouseDelta = false;
-	int frameSwapInterval = -1;
 	double monitorRefreshRate = 0.0;
-	double frameTime = 0.0;
-	double lastFrameDuration = 0.0;
+	double frameTime = NAN;
+	double lastFrameDuration = NAN;
 
 	math::Vec lastMousePos;
 
@@ -298,7 +297,7 @@ Window::Window() {
 	glfwSetInputMode(win, GLFW_LOCK_KEY_MODS, 1);
 
 	glfwMakeContextCurrent(win);
-	glfwSwapInterval(1);
+	glfwSwapInterval(0);
 	const GLFWvidmode* monitorMode = glfwGetVideoMode(glfwGetPrimaryMonitor());
 	if (monitorMode->refreshRate > 0) {
 		internal->monitorRefreshRate = monitorMode->refreshRate;
@@ -413,11 +412,11 @@ void Window::run() {
 
 void Window::step() {
 	double frameTime = system::getTime();
-	double lastFrameTime = internal->frameTime;
+	if (std::isfinite(internal->frameTime)) {
+		internal->lastFrameDuration = frameTime - internal->frameTime;
+	}
 	internal->frameTime = frameTime;
-	internal->lastFrameDuration = frameTime - lastFrameTime;
 	internal->fbCount = 0;
-	// DEBUG("%.2lf Hz", 1.0 / internal->lastFrameDuration);
 	// double t1 = 0.0, t2 = 0.0, t3 = 0.0, t4 = 0.0, t5 = 0.0;
 
 	// Make event handlers and step() have a clean NanoVG context
@@ -433,10 +432,6 @@ void Window::step() {
 
 	// In case glfwPollEvents() sets another OpenGL context
 	glfwMakeContextCurrent(win);
-	if (settings::frameSwapInterval != internal->frameSwapInterval) {
-		glfwSwapInterval(settings::frameSwapInterval);
-		internal->frameSwapInterval = settings::frameSwapInterval;
-	}
 
 	// Call cursorPosCallback every frame, not just when the mouse moves
 	{
@@ -508,34 +503,30 @@ void Window::step() {
 			glClearColor(0.0, 0.0, 0.0, 1.0);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 			nvgEndFrame(vg);
-			// t4 = system::getTime();
 		}
+		// t4 = system::getTime();
 	}
 
 	glfwSwapBuffers(win);
 
-	// On some platforms, glfwSwapBuffers() doesn't wait on monitor refresh, so we have to sleep as a fallback.
-	double frameDurationRemaining = getFrameDurationRemaining();
-	if (frameDurationRemaining > 0.0) {
-		std::this_thread::sleep_for(std::chrono::duration<double>(frameDurationRemaining));
+	// Limit frame rate
+	if (settings::frameRateLimit > 0) {
+		double remaining = getFrameDurationRemaining();
+		if (remaining > 0.0) {
+			system::sleep(remaining);
+		}
 	}
 
 	// t5 = system::getTime();
-
 	// DEBUG("pre-step %6.1f step %6.1f draw %6.1f nvgEndFrame %6.1f glfwSwapBuffers %6.1f total %6.1f",
 	// 	(t1 - frameTime) * 1e3f,
 	// 	(t2 - t1) * 1e3f,
 	// 	(t3 - t2) * 1e3f,
-	// 	(t4 - t2) * 1e3f,
+	// 	(t4 - t3) * 1e3f,
 	// 	(t5 - t4) * 1e3f,
 	// 	(t5 - frameTime) * 1e3f
 	// );
 	internal->frame++;
-}
-
-
-void Window::activateContext() {
-	glfwMakeContextCurrent(win);
 }
 
 
@@ -711,8 +702,8 @@ double Window::getLastFrameDuration() {
 
 
 double Window::getFrameDurationRemaining() {
-	double frameDurationDesired = internal->frameSwapInterval / internal->monitorRefreshRate;
-	return frameDurationDesired - (system::getTime() - internal->frameTime);
+	double frameDuration = 1.f / settings::frameRateLimit;
+	return frameDuration - (system::getTime() - internal->frameTime);
 }
 
 

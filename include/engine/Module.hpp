@@ -30,15 +30,19 @@ struct Module {
 	struct Internal;
 	Internal* internal;
 
+	/** Not owned. */
 	plugin::Model* model = NULL;
+
 	/** Unique ID for referring to the module in the engine.
-	Between 0 and 2^53 since this is serialized with JSON.
+	Between 0 and 2^53-1 since the number is serialized with JSON.
 	Assigned when added to the engine.
 	*/
 	int64_t id = -1;
 
 	/** Arrays of components.
-	Initialized with config().
+	Initialized using config().
+
+	It is recommended to call getParam(), getInput(), etc. instead of accessing these directly.
 	*/
 	std::vector<Param> params;
 	std::vector<Input> inputs;
@@ -46,8 +50,10 @@ struct Module {
 	std::vector<Light> lights;
 
 	/** Arrays of component metadata.
-	Initialized with configParam(), configInput(), configOutput(), and configLight().
+	Initialized using configParam(), configInput(), configOutput(), and configLight().
 	LightInfos are initialized to null unless configLight() is called.
+
+	It is recommended to call getParamQuantity(), getInputInfo(), etc. instead of accessing these directly.
 	*/
 	std::vector<ParamQuantity*> paramQuantities;
 	std::vector<PortInfo*> inputInfos;
@@ -225,6 +231,8 @@ struct Module {
 		assert(outputId < (int) outputs.size());
 		// Check that output is not yet routed
 		for (BypassRoute& br : bypassRoutes) {
+			// Prevent unused variable warning for compilers that ignore assert()
+			(void) br;
 			assert(br.outputId != outputId);
 		}
 
@@ -296,8 +304,8 @@ struct Module {
 	Expander& getRightExpander() {
 		return rightExpander;
 	}
-	/** Returns the left Expander if `side` is false, and the right Expander if `side` is true. */
-	Expander& getExpander(bool side) {
+	/** Returns the left Expander for `side = 0` and the right Expander for `side = 1`. */
+	Expander& getExpander(int side) {
 		return side ? rightExpander : leftExpander;
 	}
 

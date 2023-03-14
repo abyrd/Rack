@@ -18,7 +18,8 @@ engine::Param* ParamQuantity::getParam() {
 	return &module->params[paramId];
 }
 
-void ParamQuantity::setSmoothValue(float value) {
+
+void ParamQuantity::setValue(float value) {
 	if (!module)
 		return;
 	value = math::clampSafe(value, getMinValue(), getMaxValue());
@@ -30,16 +31,17 @@ void ParamQuantity::setSmoothValue(float value) {
 		APP->engine->setParamValue(module, paramId, value);
 }
 
-float ParamQuantity::getSmoothValue() {
+
+float ParamQuantity::getValue() {
 	if (!module)
 		return 0.f;
-	if (smoothEnabled)
-		return APP->engine->getParamSmoothValue(module, paramId);
-	else
-		return APP->engine->getParamValue(module, paramId);
+	// Get smoothing target value regardless of `smoothEnabled`.
+	// If smoothing is enabled, value is set, and smoothing is then disabled, calling getParamValue() will return the incorrect value.
+	return APP->engine->getParamSmoothValue(module, paramId);
 }
 
-void ParamQuantity::setValue(float value) {
+
+void ParamQuantity::setImmediateValue(float value) {
 	if (!module)
 		return;
 	value = math::clampSafe(value, getMinValue(), getMaxValue());
@@ -48,11 +50,13 @@ void ParamQuantity::setValue(float value) {
 	APP->engine->setParamValue(module, paramId, value);
 }
 
-float ParamQuantity::getValue() {
+
+float ParamQuantity::getImmediateValue() {
 	if (!module)
 		return 0.f;
 	return APP->engine->getParamValue(module, paramId);
 }
+
 
 float ParamQuantity::getMinValue() {
 	return minValue;
@@ -67,8 +71,7 @@ float ParamQuantity::getDefaultValue() {
 }
 
 float ParamQuantity::getDisplayValue() {
-	// We don't want the text to be smoothed (animated), so get the smooth target value.
-	float v = getSmoothValue();
+	float v = getValue();
 	if (displayBase == 0.f) {
 		// Linear
 		// v is unchanged
@@ -83,6 +86,7 @@ float ParamQuantity::getDisplayValue() {
 	}
 	return v * displayMultiplier + displayOffset;
 }
+
 
 void ParamQuantity::setDisplayValue(float displayValue) {
 	// Handle displayOffset
@@ -112,20 +116,24 @@ void ParamQuantity::setDisplayValue(float displayValue) {
 		return;
 
 	// Set the value directly without smoothing
-	setValue(v);
+	setImmediateValue(v);
 }
+
 
 int ParamQuantity::getDisplayPrecision() {
 	return displayPrecision;
 }
 
+
 std::string ParamQuantity::getDisplayValueString() {
 	return Quantity::getDisplayValueString();
 }
 
+
 void ParamQuantity::setDisplayValueString(std::string s) {
 	Quantity::setDisplayValueString(s);
 }
+
 
 std::string ParamQuantity::getLabel() {
 	if (name == "")
@@ -133,13 +141,16 @@ std::string ParamQuantity::getLabel() {
 	return name;
 }
 
+
 std::string ParamQuantity::getUnit() {
 	return unit;
 }
 
+
 void ParamQuantity::reset() {
-	Quantity::reset();
+	setImmediateValue(getDefaultValue());
 }
+
 
 void ParamQuantity::randomize() {
 	if (!isBounded())
@@ -149,13 +160,14 @@ void ParamQuantity::randomize() {
 		// Randomize inclusive of the maximum value
 		float value = math::rescale(random::uniform(), 0.f, 1.f, getMinValue(), getMaxValue() + 1.f);
 		value = std::floor(value);
-		setValue(value);
+		setImmediateValue(value);
 	}
 	else {
-		// Same as Quantity::randomize
-		setScaledValue(random::uniform());
+		// Same as Quantity::randomize() but with setImmediateValue()
+		setImmediateValue(fromScaled(random::uniform()));
 	}
 }
+
 
 std::string ParamQuantity::getDescription() {
 	return description;
@@ -172,8 +184,21 @@ json_t* ParamQuantity::toJson() {
 void ParamQuantity::fromJson(json_t* rootJ) {
 	json_t* valueJ = json_object_get(rootJ, "value");
 	if (valueJ)
-		setValue(json_number_value(valueJ));
+		setImmediateValue(json_number_value(valueJ));
 }
+
+
+void ParamQuantity::setSmoothValue(float value) {
+	setValue(value);
+}
+
+
+float ParamQuantity::getSmoothValue() {
+	return getValue();
+}
+
+
+// SwitchQuantity
 
 
 std::string SwitchQuantity::getDisplayValueString() {
@@ -183,6 +208,7 @@ std::string SwitchQuantity::getDisplayValueString() {
 	return labels[index];
 }
 
+
 void SwitchQuantity::setDisplayValueString(std::string s) {
 	// Find label that matches string, case insensitive.
 	auto it = std::find_if(labels.begin(), labels.end(), [&](const std::string& a) {
@@ -191,7 +217,7 @@ void SwitchQuantity::setDisplayValueString(std::string s) {
 	if (it == labels.end())
 		return;
 	int index = std::distance(labels.begin(), it);
-	setValue(getMinValue() + index);
+	setImmediateValue(getMinValue() + index);
 }
 
 

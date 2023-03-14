@@ -34,3 +34,13 @@
 [submodule "dep/rtmidi"]
 	path = dep/rtmidi
 	url = https://github.com/VCVRack/rtmidi.git
+[submodule "dep/tinyexpr"]
+	path = dep/tinyexpr
+	url = https://github.com/codeplea/tinyexpr.git
+[submodule "dep/speexdsp"]
+	path = dep/speexdsp
+	url = https://gitlab.xiph.org/xiph/speexdsp.git
+	ignore = untracked
+[submodule "dep/simde"]
+	path = dep/simde
+	url = https://github.com/simd-everywhere/simde.git

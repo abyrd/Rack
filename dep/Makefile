@@ -55,6 +55,8 @@ osdialog = include/osdialog.h
 pffft = include/pffft.h
 fuzzysearchdatabase = include/FuzzySearchDatabase.hpp
 ghcfilesystem = include/ghc/filesystem.hpp
+tinyexpr = include/tinyexpr.h
+simde = include/simde
 
 DEPS += $(glew)
 DEPS += $(glfw)
@@ -72,6 +74,8 @@ DEPS += $(osdialog)
 DEPS += $(pffft)
 DEPS += $(fuzzysearchdatabase)
 DEPS += $(ghcfilesystem)
+DEPS += $(tinyexpr)
+DEPS += $(simde)
 
 
 DEP_LOCAL := .
@@ -101,7 +105,7 @@ $(glfw): | glfw
 	$(MAKE) -C glfw/build install
 
 jansson-2.12:
-	$(WGET) "http://www.digip.org/jansson/releases/jansson-2.12.tar.gz"
+	$(WGET) "https://github.com/akheron/jansson/releases/download/v2.12/jansson-2.12.tar.gz" || $(WGET) "http://www.digip.org/jansson/releases/jansson-2.12.tar.gz"
 	$(SHA256) jansson-2.12.tar.gz 5f8dec765048efac5d919aded51b26a32a05397ea207aa769ff6b53c7027d2c9
 	$(UNTAR) jansson-2.12.tar.gz
 	rm jansson-2.12.tar.gz
@@ -125,7 +129,7 @@ $(openssl): | openssl-1.1.1k
 	$(MAKE) -C openssl-1.1.1k install_sw
 
 curl-7.79.1:
-	$(WGET) "https://curl.se/download/curl-7.79.1.tar.gz"
+	$(WGET) "https://github.com/curl/curl/releases/download/curl-7_79_1/curl-7.79.1.tar.gz" || $(WGET) "https://curl.se/download/curl-7.79.1.tar.gz"
 	$(SHA256) curl-7.79.1.tar.gz 370b11201349816287fb0ccc995e420277fbfcaf76206e309b3f60f0eda090c2
 	$(UNTAR) curl-7.79.1.tar.gz
 	rm curl-7.79.1.tar.gz
@@ -152,7 +156,7 @@ $(zstd): | zstd-1.4.5
 	$(MAKE) -C zstd-1.4.5/build/cmake install
 
 libarchive-3.4.3:
-	$(WGET) "https://libarchive.org/downloads/libarchive-3.4.3.tar.gz"
+	$(WGET) "https://github.com/libarchive/libarchive/releases/download/v3.4.3/libarchive-3.4.3.tar.gz" || $(WGET) "https://libarchive.org/downloads/libarchive-3.4.3.tar.gz"
 	$(SHA256) libarchive-3.4.3.tar.gz ee1e749213c108cb60d53147f18c31a73d6717d7e3d2481c157e1b34c881ea39
 	$(UNTAR) libarchive-3.4.3.tar.gz
 	rm libarchive-3.4.3.tar.gz
@@ -164,19 +168,14 @@ $(libarchive): | $(zstd) libarchive-3.4.3
 	$(MAKE) -C libarchive-3.4.3/build
 	$(MAKE) -C libarchive-3.4.3/build install
 
-speexdsp-SpeexDSP-1.2rc3:
-	$(WGET) "https://vcvrack.com/downloads/dep/speexdsp-SpeexDSP-1.2rc3.tgz"
-	$(SHA256) speexdsp-SpeexDSP-1.2rc3.tgz c8dded1454747f65956f981c95e7f89a06abdaa2a53e8aeaa66bab2a3d59cebd
-	$(UNTAR) speexdsp-SpeexDSP-1.2rc3.tgz
-	rm speexdsp-SpeexDSP-1.2rc3.tgz
-
-$(libspeexdsp): | speexdsp-SpeexDSP-1.2rc3
-	cd speexdsp-SpeexDSP-1.2rc3 && $(CONFIGURE)
-	$(MAKE) -C speexdsp-SpeexDSP-1.2rc3
-	$(MAKE) -C speexdsp-SpeexDSP-1.2rc3 install
+$(libspeexdsp): | speexdsp
+	cd speexdsp && ./autogen.sh
+	cd speexdsp && $(CONFIGURE)
+	$(MAKE) -C speexdsp
+	$(MAKE) -C speexdsp install
 
 libsamplerate-0.1.9:
-	$(WGET) "http://www.mega-nerd.com/SRC/libsamplerate-0.1.9.tar.gz"
+	$(WGET) "https://github.com/libsndfile/libsamplerate/releases/download/0.1.9/libsamplerate-0.1.9.tar.gz" || $(WGET) "http://www.mega-nerd.com/SRC/libsamplerate-0.1.9.tar.gz"
 	$(SHA256) libsamplerate-0.1.9.tar.gz 0a7eb168e2f21353fb6d84da152e4512126f7dc48ccb0be80578c565413444c1
 	$(UNTAR) libsamplerate-0.1.9.tar.gz
 	rm libsamplerate-0.1.9.tar.gz
@@ -255,9 +254,17 @@ $(ghcfilesystem): filesystem/include/ghc
 	mkdir -p include
 	cp -r $^ include/
 
+$(tinyexpr): tinyexpr/tinyexpr.h
+	mkdir -p include
+	cp $^ include/
+
+$(simde): simde/simde
+	mkdir -p include
+	cp -R $^ include/
+
 # Helpers
 
-src: glew-2.1.0 glfw jansson-2.12 speexdsp-SpeexDSP-1.2rc3 openssl-1.1.1k curl-7.79.1 zstd-1.4.5 libarchive-3.4.3 rtaudio nanovg nanosvg oui-blendish osdialog
+src: glew-2.1.0 glfw jansson-2.12 libsamplerate-0.1.9 openssl-1.1.1k curl-7.79.1 zstd-1.4.5 libarchive-3.4.3 rtaudio nanovg nanosvg oui-blendish osdialog
 
 clean:
 	git clean -fdx

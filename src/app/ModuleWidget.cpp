@@ -263,9 +263,14 @@ void ModuleWidget::draw(const DrawArgs& args) {
 		// Text
 		float percent = meterBuffer[meterIndex] * sampleRate * 100.f;
 		// float microseconds = meterBuffer[meterIndex] * 1e6f;
-		std::string meterText = string::f("%.1f%%", percent);
-		float x = box.size.x - bndLabelWidth(args.vg, -1, meterText.c_str());
-		bndMenuLabel(args.vg, x, plotHeight, INFINITY, BND_WIDGET_HEIGHT, -1, meterText.c_str());
+		std::string meterText = string::f("%.1f", percent);
+		// Only append "%" if wider than 2 HP
+		if (box.getWidth() > RACK_GRID_WIDTH * 2)
+			meterText += "%";
+		math::Vec pt;
+		pt.x = box.size.x - bndLabelWidth(args.vg, -1, meterText.c_str()) + 3;
+		pt.y = plotHeight + 0.5;
+		bndMenuLabel(args.vg, VEC_ARGS(pt), INFINITY, BND_WIDGET_HEIGHT, -1, meterText.c_str());
 	}
 
 	// Selection
@@ -384,6 +389,12 @@ void ModuleWidget::onButton(const ButtonEvent& e) {
 					return;
 				}
 
+				// If module positions are locked, don't consume left-click
+				if (settings::lockModules) {
+					e.consume(NULL);
+					return;
+				}
+
 				internal->dragOffset = e.pos;
 			}
 
@@ -410,6 +421,7 @@ void ModuleWidget::onButton(const ButtonEvent& e) {
 
 			// If module positions are locked, don't consume left-click
 			if (settings::lockModules) {
+				e.consume(NULL);
 				return;
 			}
 
@@ -473,13 +485,22 @@ void ModuleWidget::onDragMove(const DragMoveEvent& e) {
 			math::Vec pos = mousePos;
 			pos.x -= internal->dragOffset.x;
 			pos.y -= RACK_GRID_HEIGHT / 2;
+
 			if (APP->scene->rack->isSelected(this)) {
 				pos = (pos / RACK_GRID_SIZE).round() * RACK_GRID_SIZE;
 				math::Vec delta = pos.minus(box.pos);
 				APP->scene->rack->setSelectionPosNearest(delta);
 			}
 			else {
-				APP->scene->rack->setModulePosForce(this, pos);
+				if (settings::squeezeModules) {
+					APP->scene->rack->setModulePosSqueeze(this, pos);
+				}
+				else {
+					if ((APP->window->getMods() & RACK_MOD_MASK) == RACK_MOD_CTRL)
+						APP->scene->rack->setModulePosForce(this, pos);
+					else
+						APP->scene->rack->setModulePosNearest(this, pos);
+				}
 			}
 		}
 	}
@@ -506,13 +527,13 @@ bool ModuleWidget::pasteJsonAction(json_t* moduleJ) {
 	engine::Module::jsonStripIds(moduleJ);
 
 	json_t* oldModuleJ = toJson();
+	DEFER({json_decref(oldModuleJ);});
 
 	try {
 		fromJson(moduleJ);
 	}
 	catch (Exception& e) {
 		WARN("%s", e.what());
-		json_decref(oldModuleJ);
 		return false;
 	}
 
@@ -520,7 +541,9 @@ bool ModuleWidget::pasteJsonAction(json_t* moduleJ) {
 	history::ModuleChange* h = new history::ModuleChange;
 	h->name = "paste module preset";
 	h->moduleId = module->id;
+	json_incref(oldModuleJ);
 	h->oldModuleJ = oldModuleJ;
+	json_incref(moduleJ);
 	h->newModuleJ = moduleJ;
 	APP->history->push(h);
 	return true;
@@ -664,7 +687,7 @@ void ModuleWidget::saveTemplate() {
 
 void ModuleWidget::saveTemplateDialog() {
 	if (hasTemplate()) {
-		std::string message = string::f("Overwrite template preset for %s?", model->getFullName().c_str());
+		std::string message = string::f("Overwrite default preset for %s?", model->getFullName().c_str());
 		if (!osdialog_message(OSDIALOG_INFO, OSDIALOG_OK_CANCEL, message.c_str()))
 			return;
 	}
@@ -684,7 +707,7 @@ void ModuleWidget::clearTemplate() {
 }
 
 void ModuleWidget::clearTemplateDialog() {
-	std::string message = string::f("Delete template preset for %s?", model->getFullName().c_str());
+	std::string message = string::f("Delete default preset for %s?", model->getFullName().c_str());
 	if (!osdialog_message(OSDIALOG_INFO, OSDIALOG_OK_CANCEL, message.c_str()))
 		return;
 	clearTemplate();
@@ -820,8 +843,16 @@ void ModuleWidget::cloneAction(bool cloneCables) {
 	INFO("Creating module widget %s", model->getFullName().c_str());
 	ModuleWidget* clonedModuleWidget = model->createModuleWidget(clonedModule);
 	APP->scene->rack->updateModuleOldPositions();
-	APP->scene->rack->addModuleAtMouse(clonedModuleWidget);
+	APP->scene->rack->addModule(clonedModuleWidget);
+	// Place module to the right of `this` module, by forcing it to 1 HP to the right.
+	math::Vec clonedPos = box.pos;
+	clonedPos.x += clonedModuleWidget->box.getWidth();
+	if (settings::squeezeModules)
+		APP->scene->rack->squeezeModulePos(clonedModuleWidget, clonedPos);
+	else
+		APP->scene->rack->setModulePosNearest(clonedModuleWidget, clonedPos);
 	h->push(APP->scene->rack->getModuleDragAction());
+	APP->scene->rack->updateExpanders();
 
 	// history::ModuleAdd
 	history::ModuleAdd* hma = new history::ModuleAdd;
@@ -875,28 +906,38 @@ void ModuleWidget::bypassAction(bool bypassed) {
 }
 
 void ModuleWidget::removeAction() {
-	history::ComplexAction* complexAction = new history::ComplexAction;
-	complexAction->name = "delete module";
-	appendDisconnectActions(complexAction);
+	history::ComplexAction* h = new history::ComplexAction;
+	h->name = "delete module";
+
+	// Disconnect cables
+	appendDisconnectActions(h);
+
+	// Unset module position from rack.
+	APP->scene->rack->updateModuleOldPositions();
+	if (settings::squeezeModules)
+		APP->scene->rack->unsqueezeModulePos(this);
+	h->push(APP->scene->rack->getModuleDragAction());
 
 	// history::ModuleRemove
 	history::ModuleRemove* moduleRemove = new history::ModuleRemove;
 	moduleRemove->setModule(this);
-	complexAction->push(moduleRemove);
+	h->push(moduleRemove);
 
-	APP->history->push(complexAction);
+	APP->history->push(h);
 
 	// This removes the module and transfers ownership to caller
 	APP->scene->rack->removeModule(this);
 	delete this;
+
+	APP->scene->rack->updateExpanders();
 }
 
 
 // Create ModulePresetPathItems for each patch in a directory.
 static void appendPresetItems(ui::Menu* menu, WeakPtr<ModuleWidget> moduleWidget, std::string presetDir) {
 	bool hasPresets = false;
-	// Note: This is not cached, so opening this menu each time might have a bit of latency.
 	if (system::isDirectory(presetDir)) {
+		// Note: This is not cached, so opening this menu each time might have a bit of latency.
 		std::vector<std::string> entries = system::getEntries(presetDir);
 		std::sort(entries.begin(), entries.end());
 		for (std::string path : entries) {
@@ -914,7 +955,7 @@ static void appendPresetItems(ui::Menu* menu, WeakPtr<ModuleWidget> moduleWidget
 					appendPresetItems(menu, moduleWidget, path);
 				}));
 			}
-			else if (system::getExtension(path) == ".vcvm") {
+			else if (system::getExtension(path) == ".vcvm" && name != "template") {
 				hasPresets = true;
 
 				menu->addChild(createMenuItem(name, "", [=]() {
@@ -977,13 +1018,13 @@ void ModuleWidget::createContextMenu() {
 			weakThis->saveDialog();
 		}));
 
-		menu->addChild(createMenuItem("Save template", "", [=]() {
+		menu->addChild(createMenuItem("Save default", "", [=]() {
 			if (!weakThis)
 				return;
 			weakThis->saveTemplateDialog();
 		}));
 
-		menu->addChild(createMenuItem("Clear template", "", [=]() {
+		menu->addChild(createMenuItem("Clear default", "", [=]() {
 			if (!weakThis)
 				return;
 			weakThis->clearTemplateDialog();
@@ -1054,6 +1095,22 @@ void ModuleWidget::createContextMenu() {
 	}, false, true));
 
 	appendContextMenu(menu);
+}
+
+math::Vec ModuleWidget::getGridPosition() {
+	return ((getPosition() - RACK_OFFSET) / RACK_GRID_SIZE).round();
+}
+
+void ModuleWidget::setGridPosition(math::Vec pos) {
+	setPosition(pos * RACK_GRID_SIZE + RACK_OFFSET);
+}
+
+math::Vec ModuleWidget::getGridSize() {
+	return (getSize() / RACK_GRID_SIZE).round();
+}
+
+math::Rect ModuleWidget::getGridBox() {
+	return math::Rect(getGridPosition(), getGridSize());
 }
 
 math::Vec& ModuleWidget::dragOffset() {

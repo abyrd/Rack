@@ -25,21 +25,28 @@ static std::condition_variable updateCv;
 
 
 void init() {
-	if (settings::autoCheckUpdates && !settings::devMode) {
-		std::thread t([&]() {
-			system::setThreadName("Library");
-			// Wait a few seconds before updating in case library is destroyed immediately afterwards
-			{
-				std::unique_lock<std::mutex> lock(timeoutMutex);
-				if (updateCv.wait_for(lock, std::chrono::duration<double>(4.0)) != std::cv_status::timeout)
-					return;
-			}
+	if (!settings::autoCheckUpdates)
+		return;
+	// Dev mode is typically used when Rack or plugins are compiled from source, so updating might overwrite assets.
+	if (settings::devMode)
+		return;
+	// Safe mode disables plugin loading, so Rack will unnecessarily try to sync all plugins.
+	if (settings::safeMode)
+		return;
 
-			checkAppUpdate();
-			checkUpdates();
-		});
-		t.detach();
-	}
+	std::thread t([&]() {
+		system::setThreadName("Library");
+		// Wait a few seconds before updating in case library is destroyed immediately afterwards
+		{
+			std::unique_lock<std::mutex> lock(timeoutMutex);
+			if (updateCv.wait_for(lock, std::chrono::duration<double>(4.0)) != std::cv_status::timeout)
+				return;
+		}
+
+		checkAppUpdate();
+		checkUpdates();
+	});
+	t.detach();
 }
 
 
@@ -59,7 +66,7 @@ void checkAppUpdate() {
 
 	std::string versionUrl = API_URL + "/version";
 	json_t* reqJ = json_object();
-	json_object_set(reqJ, "edition", json_string(APP_EDITION.c_str()));
+	json_object_set_new(reqJ, "edition", json_string(APP_EDITION.c_str()));
 	DEFER({json_decref(reqJ);});
 
 	json_t* resJ = network::requestJson(network::METHOD_GET, versionUrl, reqJ);
@@ -70,8 +77,12 @@ void checkAppUpdate() {
 	DEFER({json_decref(resJ);});
 
 	json_t* versionJ = json_object_get(resJ, "version");
-	if (versionJ)
-		appVersion = json_string_value(versionJ);
+	if (versionJ) {
+		std::string appVersion = json_string_value(versionJ);
+		// Check if app version is more recent than current version
+		if (string::Version(APP_VERSION) < string::Version(appVersion))
+			library::appVersion = appVersion;
+	}
 
 	json_t* changelogUrlJ = json_object_get(resJ, "changelogUrl");
 	if (changelogUrlJ)
@@ -79,7 +90,8 @@ void checkAppUpdate() {
 
 	json_t* downloadUrlsJ = json_object_get(resJ, "downloadUrls");
 	if (downloadUrlsJ) {
-		json_t* downloadUrlJ = json_object_get(downloadUrlsJ, APP_OS.c_str());
+		std::string arch = APP_OS + "-" + APP_CPU;
+		json_t* downloadUrlJ = json_object_get(downloadUrlsJ, arch.c_str());
 		if (downloadUrlJ)
 			appDownloadUrl = json_string_value(downloadUrlJ);
 	}
@@ -87,7 +99,7 @@ void checkAppUpdate() {
 
 
 bool isAppUpdateAvailable() {
-	return (appVersion != "") && (appVersion != APP_VERSION);
+	return (appVersion != "");
 }
 
 
@@ -103,8 +115,8 @@ void logIn(std::string email, std::string password) {
 
 	loginStatus = "Logging in...";
 	json_t* reqJ = json_object();
-	json_object_set(reqJ, "email", json_string(email.c_str()));
-	json_object_set(reqJ, "password", json_string(password.c_str()));
+	json_object_set_new(reqJ, "email", json_string(email.c_str()));
+	json_object_set_new(reqJ, "password", json_string(password.c_str()));
 	std::string url = API_URL + "/token";
 	json_t* resJ = network::requestJson(network::METHOD_POST, url, reqJ);
 	json_decref(reqJ);
@@ -184,7 +196,7 @@ void checkUpdates() {
 	// Get library manifests
 	std::string manifestsUrl = API_URL + "/library/manifests";
 	json_t* manifestsReq = json_object();
-	json_object_set(manifestsReq, "version", json_string(APP_VERSION_MAJOR.c_str()));
+	json_object_set_new(manifestsReq, "version", json_string(APP_VERSION_MAJOR.c_str()));
 	json_t* manifestsResJ = network::requestJson(network::METHOD_GET, manifestsUrl, manifestsReq);
 	json_decref(manifestsReq);
 	if (!manifestsResJ) {
@@ -214,7 +226,7 @@ void checkUpdates() {
 		// Get plugin manifest
 		json_t* manifestJ = json_object_get(manifestsJ, pluginSlug.c_str());
 		if (!manifestJ) {
-			WARN("VCV account has plugin %s but no manifest was found", pluginSlug.c_str());
+			// Skip plugin silently
 			continue;
 		}
 
@@ -243,14 +255,22 @@ void checkUpdates() {
 			continue;
 		}
 
-		// Check if update is needed
+		// Check that update is needed
 		plugin::Plugin* p = plugin::getPlugin(pluginSlug);
-		if (p && p->version == update.version)
-			continue;
+		if (p) {
+			if (update.version == p->version)
+				continue;
+			if (string::Version(update.version) < string::Version(p->version))
+				continue;
+		}
 
-		// Require that plugin is available
-		json_t* availableJ = json_object_get(manifestJ, "available");
-		if (!json_boolean_value(availableJ))
+		// Check that plugin is available for this arch
+		json_t* archesJ = json_object_get(manifestJ, "arches");
+		if (!archesJ)
+			continue;
+		std::string arch = APP_OS + "-" + APP_CPU;
+		json_t* archJ = json_object_get(archesJ, arch.c_str());
+		if (!json_boolean_value(archJ))
 			continue;
 
 		// Get changelog URL
@@ -336,16 +356,16 @@ void syncUpdate(std::string slug) {
 	updateProgress = 0.f;
 	DEFER({updateProgress = 0.f;});
 
-	INFO("Downloading plugin %s v%s for %s", slug.c_str(), update.version.c_str(), APP_OS.c_str());
+	INFO("Downloading plugin %s v%s for %s-%s", slug.c_str(), update.version.c_str(), APP_OS.c_str(), APP_CPU.c_str());
 
 	// Get download URL
 	std::string downloadUrl = API_URL + "/download";
 	downloadUrl += "?slug=" + network::encodeUrl(slug);
 	downloadUrl += "&version=" + network::encodeUrl(update.version);
-	downloadUrl += "&os=" + network::encodeUrl(APP_OS);
+	downloadUrl += "&arch=" + network::encodeUrl(APP_OS + "-" + APP_CPU);
 
 	// Get file path
-	std::string packageFilename = slug + "-" + update.version + "-" + APP_OS + ".vcvplugin";
+	std::string packageFilename = slug + "-" + update.version + "-" + APP_OS + "-" + APP_CPU + ".vcvplugin";
 	std::string packagePath = system::join(plugin::pluginsPath, packageFilename);
 
 	// Download plugin package

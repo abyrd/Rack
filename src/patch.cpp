@@ -24,12 +24,25 @@ static const char PATCH_FILTERS[] = "VCV Rack patch (.vcv):vcv";
 
 Manager::Manager() {
 	autosavePath = asset::user("autosave");
+
+	// Use a different temporary autosave dir when safe mode is enabled, to avoid altering normal autosave.
+	if (settings::safeMode) {
+		autosavePath = asset::user("autosave-safe");
+		clearAutosave();
+	}
+
 	templatePath = asset::user("template.vcv");
 	factoryTemplatePath = asset::system("template.vcv");
 }
 
 
 Manager::~Manager() {
+	// In safe mode, delete autosave dir.
+	if (settings::safeMode) {
+		clearAutosave();
+		return;
+	}
+
 	// Dispatch onSave to all Modules so they save their patch storage, etc.
 	APP->engine->prepareSave();
 	// Save autosave if not headless
@@ -41,6 +54,10 @@ Manager::~Manager() {
 
 
 void Manager::launch(std::string pathArg) {
+	// Don't load any patches if safe mode is enabled
+	if (settings::safeMode)
+		return;
+
 	// Load the argument if exists
 	if (pathArg != "") {
 		loadAction(pathArg);
@@ -213,6 +230,11 @@ void Manager::saveAutosave() {
 }
 
 
+void Manager::clearAutosave() {
+	system::removeRecursively(autosavePath);
+}
+
+
 void Manager::cleanAutosave() {
 	// Remove files and directories in the `autosave/modules` directory that doesn't match a module in the rack.
 	std::string modulesDir = system::join(autosavePath, "modules");
@@ -251,8 +273,7 @@ void Manager::load(std::string path) {
 	INFO("Loading patch %s", path.c_str());
 
 	clear();
-
-	system::removeRecursively(autosavePath);
+	clearAutosave();
 	system::createDirectories(autosavePath);
 
 	if (isPatchLegacyV1(path)) {
@@ -272,8 +293,6 @@ void Manager::load(std::string path) {
 
 
 void Manager::loadTemplate() {
-	clear();
-
 	try {
 		load(templatePath);
 	}
@@ -286,8 +305,8 @@ void Manager::loadTemplate() {
 			std::string message = string::f("Could not load system template patch, clearing rack: %s", e.what());
 			osdialog_message(OSDIALOG_INFO, OSDIALOG_OK, message.c_str());
 
-			system::removeRecursively(autosavePath);
-			system::createDirectories(autosavePath);
+			clear();
+			clearAutosave();
 		}
 	}
 
@@ -307,7 +326,6 @@ void Manager::loadTemplateDialog() {
 
 bool Manager::hasAutosave() {
 	std::string patchPath = system::join(autosavePath, "patch.json");
-	INFO("Loading autosave %s", patchPath.c_str());
 	FILE* file = std::fopen(patchPath.c_str(), "r");
 	if (!file)
 		return false;
@@ -465,7 +483,7 @@ void Manager::fromJson(json_t* rootJ) {
 	if (versionJ)
 		version = json_string_value(versionJ);
 	if (version != APP_VERSION) {
-		INFO("Patch was made with Rack v%s, current Rack version is v%s", version.c_str(), APP_VERSION.c_str());
+		INFO("Patch was made with Rack %s, current Rack version is %s", version.c_str(), APP_VERSION.c_str());
 	}
 
 	// path
