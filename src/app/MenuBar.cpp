@@ -485,10 +485,10 @@ struct ViewButton : MenuButton {
 		knobScrollSensitivitySlider->box.size.x = 250.0;
 		menu->addChild(knobScrollSensitivitySlider);
 
-		menu->addChild(createCheckMenuItem("Skeuomorphic", "",
-		   [=]() {return settings::skeuomorphic;},
+		menu->addChild(createCheckMenuItem("Flatten UI", "",
+		   [=]() {return settings::flat;},
 		   [=]() {
-				settings::skeuomorphic = !settings::skeuomorphic;
+				settings::flat = !settings::flat;
 				// Trigger complete redraw to refresh knob shadow framebuffers
 				APP->event->handleDirty();
 			}

@@ -21,7 +21,7 @@ void SvgScrew::setSvg(std::shared_ptr<window::Svg> svg) {
 }
 
 void SvgScrew::draw(const DrawArgs& args) {
-	if (!settings::skeuomorphic)
+	if (settings::flat)
 		return;
 
 	// Child widgets

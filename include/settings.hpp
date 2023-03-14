@@ -68,7 +68,7 @@ extern int threadCount;
 extern bool tooltips;
 extern bool cpuMeter;
 extern bool lockModules;
-extern bool skeuomorphic;
+extern bool flat;
 extern bool squeezeModules;
 /** Maximum screen redraw frequency in Hz, or 0 for unlimited. */
 extern float frameRateLimit;

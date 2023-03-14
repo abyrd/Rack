@@ -285,7 +285,7 @@ void CableWidget::draw(const DrawArgs& args) {
 
 void CableWidget::drawLayer(const DrawArgs& args, int layer) {
 	// Cable on layer 3 and cable shadow on layer 2
-	if (layer == 3 || (layer == 2 && settings::skeuomorphic)) {
+	if (layer == 3 || (layer == 2 && !settings::flat)) {
 		float opacity = settings::cableOpacity;
 		bool thick = false;
 

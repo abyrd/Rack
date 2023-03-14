@@ -42,7 +42,7 @@ int threadCount = 1;
 bool tooltips = true;
 bool cpuMeter = false;
 bool lockModules = false;
-bool skeuomorphic = true;
+bool flat = true;
 bool squeezeModules = true;
 #if defined ARCH_MAC
 	// Most Mac GPUs can't handle rendering the screen every frame, so use 30 Hz by default.
@@ -161,7 +161,7 @@ json_t* toJson() {
 
 	json_object_set_new(rootJ, "lockModules", json_boolean(lockModules));
 
-	json_object_set_new(rootJ, "skeuomorphic", json_boolean(skeuomorphic));
+	json_object_set_new(rootJ, "flat", json_boolean(flat));
 
 	json_object_set_new(rootJ, "squeezeModules", json_boolean(squeezeModules));
 
@@ -354,9 +354,9 @@ void fromJson(json_t* rootJ) {
 	if (lockModulesJ)
 		lockModules = json_boolean_value(lockModulesJ);
 
-	json_t* skeuomorphicJ = json_object_get(rootJ, "skeuomorphic");
-	if (skeuomorphicJ)
-		skeuomorphic = json_boolean_value(skeuomorphicJ);
+	json_t* flatJ = json_object_get(rootJ, "flat");
+	if (flatJ)
+		flat = json_boolean_value(flatJ);
 
 	json_t* squeezeModulesJ = json_object_get(rootJ, "squeezeModules");
 	if (squeezeModulesJ)

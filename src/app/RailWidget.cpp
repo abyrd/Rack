@@ -60,7 +60,7 @@ void RailWidget::step() {
 
 
 void RailWidget::draw(const DrawArgs& args) {
-	if (!settings::skeuomorphic)
+	if (settings::flat)
 		return;
 
 	if (!internal->railSw->svg)

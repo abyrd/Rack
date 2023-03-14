@@ -11,7 +11,7 @@ CircularShadow::CircularShadow() {
 }
 
 void CircularShadow::draw(const DrawArgs& args) {
-	if (!settings::skeuomorphic)
+	if (settings::flat)
 		return;
 
 	if (opacity <= 0.0)
