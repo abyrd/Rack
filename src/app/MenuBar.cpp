@@ -458,6 +458,15 @@ struct ViewButton : MenuButton {
 		haloBrightnessSlider->box.size.x = 250.0;
 		menu->addChild(haloBrightnessSlider);
 
+		menu->addChild(createCheckMenuItem("Flatten UI", "",
+		   [=]() {return settings::flat;},
+		   [=]() {
+				settings::flat = !settings::flat;
+				// Trigger complete redraw to refresh knob shadow framebuffers
+				APP->event->handleDirty();
+			}
+		));
+
 		menu->addChild(new ui::MenuSeparator);
 		menu->addChild(createMenuLabel("Parameters"));
 
@@ -484,15 +493,6 @@ struct ViewButton : MenuButton {
 		KnobScrollSensitivitySlider* knobScrollSensitivitySlider = new KnobScrollSensitivitySlider;
 		knobScrollSensitivitySlider->box.size.x = 250.0;
 		menu->addChild(knobScrollSensitivitySlider);
-
-		menu->addChild(createCheckMenuItem("Flatten UI", "",
-		   [=]() {return settings::flat;},
-		   [=]() {
-				settings::flat = !settings::flat;
-				// Trigger complete redraw to refresh knob shadow framebuffers
-				APP->event->handleDirty();
-			}
-		));
 
 		menu->addChild(new ui::MenuSeparator);
 		menu->addChild(createMenuLabel("Module"));
