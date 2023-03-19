@@ -48,54 +48,5 @@
    showgrid="false">
 	</sodipodi:namedview>
 
-<linearGradient
-   id="SVGID_1_"
-   gradientUnits="userSpaceOnUse"
-   x1="1"
-   y1="0.1827"
-   x2="1"
-   y2="0.91893">
-	<stop
-   offset="0"
-   style="stop-color:#FDFDFF"
-   id="stop5" />
-	<stop
-   offset="1"
-   style="stop-color:#FCFEFF;stop-opacity:0"
-   id="stop7" />
-</linearGradient>
-<ellipse
-   fill="url(#SVGID_1_)"
-   cx="1"
-   cy="0.55081"
-   rx="0.60771"
-   ry="0.36811"
-   id="ellipse10"
-   style="opacity:0.5" />
-<linearGradient
-   id="SVGID_2_"
-   gradientUnits="userSpaceOnUse"
-   x1="-1248.75732"
-   y1="-999.41565"
-   x2="-1248.75732"
-   y2="-998.67944"
-   gradientTransform="matrix(-1 0 0 -1 -1247.75732 -997.58325)">
-	<stop
-   offset="0"
-   style="stop-color:#FDFDFF"
-   id="stop12" />
-	<stop
-   offset="1"
-   style="stop-color:#FCFEFF;stop-opacity:0"
-   id="stop14" />
-</linearGradient>
-<ellipse
-   opacity="0.3"
-   fill="url(#SVGID_2_)"
-   cx="1"
-   cy="1.46428"
-   rx="0.60771"
-   ry="0.36811"
-   id="ellipse17"
-   style="opacity:0.15" />
+
 </svg>
